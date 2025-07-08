@@ -13,9 +13,9 @@ TRANSFORMATIONS = ['birth', 'merge','fragment','split']
 NIT, TSS, DELTA = 1000, 20 , 1
 GIT=10 # Number of NIT with the same graph
 n_split=3
-mu = .2
-start_trans=10
-stop_trans=start_trans+1
+mu = .2                                                     #上面的这些参数在01a中已有，不多写注释了
+start_trans=10                                              #演化开始的绝对时间步
+stop_trans=start_trans+1                                    #演化结束的绝对时间步（因为要实现突发性演化，所以是+1）
 
 
 
@@ -29,14 +29,14 @@ def wrapper_func(args):
         timesteps=tss,
         start_trans=start_trans,
         stop_trans=stop_trans,
-        instant=True)
+        instant=True)                                       #关键改动就是这里加了instant=True,强制瞬间变化
 
     return run
 
 
 
 
-
+# 剩下的代码和01a大差不差，就是进行演化模拟和保存文件
 # for transformation in ['fragment', 'split', 'merge', 'add_nodes', 'remove_nodes', 'on_off_nodes', 'on_off_edges', 'shuffle_edges', 'remove_edges']:
 for transformation in TRANSFORMATIONS:
     
