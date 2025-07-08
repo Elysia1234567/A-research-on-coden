@@ -28,6 +28,7 @@ from ..transformations import (
 
 
 class GraphMovementSimulation():
+    #生成初始基准网络（使用LFR基准模型）
     def __init__(self, n=1000, t1=3, t2=1.5, mu=.2, seed=10, gname=None):
         # Generate base graph
         self.seed = seed
@@ -49,7 +50,7 @@ class GraphMovementSimulation():
         self.node2com = pd.DataFrame(self.orig_comm.items(), columns=['n', 'c'])
         # nx.set_node_attributes(self.G_base, self.orig_comm, name='community')
 
-    
+    #以下_setup_开头的都是变换设置方法，作用是预配置特定变换所需的初始状态
     def _setup_fragment(self, G, n_splits):
         """ Set up the fragmentation process for the Louvain algorithm.
         Prepare the fragmentation by dividing the communities into subarrays 
