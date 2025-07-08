@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 import pandas as pd
 from multiprocessing import Pool, cpu_count
-from src.simulation import Run_MultiAlpha,alphas
+from src.simulation import Run_MultiAlpha,alphas #导入多α参数模拟器
 from tqdm import tqdm
 import os
 import numpy as np
@@ -19,6 +19,7 @@ GIT=10 # Number of NIT with the same graph
 n_split=3
 mu = .2
 
+#执行多α参数实验
 def wrapper_func(args):
     Num_Graph,seed,mu, timesteps, transformation = args
     
@@ -69,12 +70,12 @@ for transformation in TRANSFORMATIONS:
     metrics = [pd.DataFrame(x, columns=columns) for x in results]
     metrics = pd.concat(metrics, axis=1)
     # Save metrics
-    metrics.to_csv(
+    metrics.to_csv(         #多α参数演化结果
         f'../results/reports/Alpha_sensitivity/multialpha_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz', 
         index=False,compression='gzip'
     )
     
-    pd.DataFrame(ts).to_csv(
+    pd.DataFrame(ts).to_csv(#各α参数下的耗时记录
             f'../results/reports/Alpha_sensitivity/time/time_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz', 
             index=False,compression='gzip'
         )

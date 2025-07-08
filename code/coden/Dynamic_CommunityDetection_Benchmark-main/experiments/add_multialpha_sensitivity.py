@@ -18,7 +18,7 @@ GIT=10 # Number of NIT with the same graph
 n_split=3
 mu = .2
 
-alphas=[1e-2,0.05,0.1,0.9]
+alphas=[1e-2,0.05,0.1,0.9]  #显示定义α参数列表
 
 def wrapper_func(args):
     global alphas
@@ -66,12 +66,12 @@ for transformation in TRANSFORMATIONS:
     metrics = [pd.DataFrame(x, columns=columns) for x in results]
     metrics = pd.concat(metrics, axis=1)
     # Save metrics
-    metrics.to_csv(
+    metrics.to_csv(             #分裂演化的多α结果
         f'../results/reports/Alpha_sensitivity/multialpha_add_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz', 
         index=False,compression='gzip'
     )
     
-    pd.DataFrame(ts).to_csv(
+    pd.DataFrame(ts).to_csv(    #对应耗时记录
             f'../results/reports/Alpha_sensitivity/time/time_add_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz', 
             index=False,compression='gzip'
         )

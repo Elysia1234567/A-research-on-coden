@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 import pandas as pd
 from multiprocessing import Pool, cpu_count
-from src.simulation import SingelGraphEvolution
+from src.simulation import SingelGraphEvolution #
 from tqdm import tqdm
 import copy
 import json
@@ -15,7 +15,7 @@ import os
 TRANSFORMATIONS=['birth', 'fragment','split','merge',
                   'add_nodes','intermittence_nodes', 'switch',
                   'break_up_communities','remove_nodes']
-inst=True
+inst=True  #是否使用瞬时模式
 print('Instant?',inst)
 if inst:
     NIT, TSS, DELTA = 1, 20,1
@@ -55,7 +55,7 @@ def wrapper_func(args):
 
 # for transformation in ['fragment', 'split', 'merge', 'add_nodes', 'remove_nodes', 'on_off_nodes', 'on_off_edges', 'shuffle_edges', 'remove_edges']:
 
-    
+#初始化模拟器和图   
 sim_cnt = 1
 
 
@@ -87,7 +87,7 @@ for transformation in tqdm(TRANSFORMATIONS):
             seed=np.random.randint(1000)
             
 
-    simulators[transformation]=(sim,G)
+    simulators[transformation]=(sim,G) #存储模拟器和图
 
 # Run experiments in multiprocessing
 iterable = [(transformation, 
