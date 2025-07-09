@@ -18,7 +18,7 @@ TRANSFORMATIONS = ['birth', 'fragment', 'split', 'merge',
                   'break_up_communities', 'remove_nodes']
 
 # 测试参数
-NIT, TSS, DELTA = 5, 5, .1  # 总实验次数, 时间步数, 演化步长
+NIT, TSS, DELTA = 5, 20, .1  # 总实验次数, 时间步数, 演化步长
 GIT = 2  # 每组图重复次数
 n_split = 1  # 受演化影响的社区数量
 mu = .2  # 社区混合参数

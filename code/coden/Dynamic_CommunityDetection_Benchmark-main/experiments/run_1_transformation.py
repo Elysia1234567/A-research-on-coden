@@ -1,154 +1,140 @@
+from pathlib import Path
 import sys
-sys.path.append('../')
-import pandas as pd
-from multiprocessing import Pool, cpu_count
-from src.simulation import SingelGraphEvolution #
-from tqdm import tqdm
-import copy
-import json
-import numpy as np
-import traceback
 import os
- 
+import pandas as pd
+from multiprocessing import Pool, cpu_count, freeze_support
+from tqdm import tqdm
+import numpy as np
+import gzip
+import json
 
+# 添加项目根目录到Python路径
+sys.path.append('../')
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+from src.simulation import RunCommunityDetection
 
-TRANSFORMATIONS=['birth', 'fragment','split','merge',
-                  'add_nodes','intermittence_nodes', 'switch',
-                  'break_up_communities','remove_nodes']
-inst=True  #是否使用瞬时模式
-print('Instant?',inst)
-if inst:
-    NIT, TSS, DELTA = 1, 20,1
-    start_trans=10
-    stop_trans=start_trans+1
-else:
-    NIT, TSS, DELTA = 1, 150,0.1
-    start_trans=10
-    stop_trans=start_trans+1
-GIT=10 # Number of NIT with the same graph
-n_split=1
-mu = .2
+# 全局配置
+TRANSFORMATIONS = ['birth', 'fragment', 'split', 'merge',
+                  'add_nodes', 'intermittence_nodes', 'switch',
+                  'break_up_communities', 'remove_nodes']
 
-
-if not os.path.exists('../results/reports/Single_run_details/'):
-    os.makedirs('../results/reports/Single_run_details/')
-if not os.path.exists('../results/reports/Single_run_details/'):
-    os.makedirs('../results/reports/Single_run_details/')
-
-
+# 全局变量（需要在wrapper_func中访问）
+instant = False
+report = True
 
 def wrapper_func(args):
-    sim, G,seed, transformation, tss, delta = args
-    
-    if seed == 0: save = True
-    else: save = False
-    if inst:
-        run=sim.run(G, seed=seed, timesteps=tss, delta=delta, transformation=transformation, save=save,report=True,start_trans=start_trans,stop_trans=stop_trans)
-    else:
-        run=sim.run(G, seed=seed, timesteps=tss, delta=delta, transformation=transformation, save=save,report=True)
-        
-    return run
-
-
-
-
-
-# for transformation in ['fragment', 'split', 'merge', 'add_nodes', 'remove_nodes', 'on_off_nodes', 'on_off_edges', 'shuffle_edges', 'remove_edges']:
-
-#初始化模拟器和图   
-sim_cnt = 1
-
-
-
-
-simulators = {}
-seed=np.random.randint(1000)
-
-for transformation in tqdm(TRANSFORMATIONS):
-    gname=f'{transformation}_mu{int(mu*100)}'
-    if transformation in ['remove_nodes','remove_edges']: 
-        n=300
-    else: 
-        n=200
-    while True:
-        try:
-            print(sim_cnt)
-            
-            sim = SingelGraphEvolution(n=n, mu=mu, gname=f'{gname}', seed=seed)
-            G = sim.setup_transformation(transformation, n_splits=n_split, save=False)
-
-            break
-        except Exception as e:
-            
-            sim_cnt+=1
-            print(transformation)
-            print(sim_cnt,e)
-            print(print(traceback.format_exc()))
-            seed=np.random.randint(1000)
-            
-
-    simulators[transformation]=(sim,G) #存储模拟器和图
-
-# Run experiments in multiprocessing
-iterable = [(transformation, 
-             42, 
-             simulators[transformation][0],simulators[transformation][1]) for transformation in TRANSFORMATIONS]
-
-with Pool(len(iterable)) as pool:
-    # Map the wrapper function to the iterable using the pool
-    results = pool.map(
-        wrapper_func, 
-        [(sim,G, i, transformation, TSS, DELTA,) for transformation, i, sim,G in iterable
-        ]
+    """可序列化的包装函数，必须在模块级别定义"""
+    Num_Graph, seed, mu, timesteps, transformation = args
+    return RunCommunityDetection(
+        Num_Graph, seed, mu, timesteps, transformation,
+        instant=instant, report=report
     )
 
-# Arrange metrics
+def process_results(transformation, NIT, GIT, mu, TSS):
+    """处理单个变换类型的所有结果"""
+    iterable = [(i//GIT, i%GIT, mu, TSS, transformation) for i in range(NIT)]
+    results = []
+    partitions = {}
+    ts = {}
 
-columns = ['ari_base', 'ari_alei', 'ari', 'ari_lei',  'ari_i','ari_ilei', 'ari_e', 'ari_ne','ari_nelei',
-           'ari_init_base', 'ari_init_alei', 'ari_init', 'ari_init_lei', 'ari_init_i','ari_init_ilei', 'ari_init_e', 'ari_init_ne','ari_init_nelei',
-    'ari_fin_base', 'ari_fin_alei', 'ari_fin', 'ari_fin_lei', 'ari_fin_i', 'ari_fin_ilei', 'ari_fin_e', 'ari_fin_ne',  'ari_fin_nelei',
-           'modularity_base', 'modularity_alei', 'modularity', 'modularity_lei', 'modularity_i' ,'modularity_ilei', 'modularity_e', 'modularity_ne', 'modularity_nelei',
-          ]
+    with Pool(min(cpu_count(), NIT)) as pool:
+        with tqdm(total=len(iterable), desc=f'Processing {transformation}') as pbar:
+            for i, res in enumerate(pool.imap(wrapper_func, iterable)):
+                if report:
+                    metrics, part, y_true_final, y_true_init = res
+                    partitions[i] = {
+                        'y_true_final': y_true_final,
+                        'y_true_init': y_true_init
+                    }
+                    for j, pred in enumerate([
+                        'y_pred_base', 'y_pred_alei', 'y_pred', 
+                        'y_pred_lei', 'y_pred_i', 'y_pred_ilei',
+                        'y_pred_e', 'y_pred_ne', 'y_pred_nelei'
+                    ]):
+                        partitions[i][pred] = {step: part[step][j] for step in range(TSS)}
+                else:
+                    metrics, t = res
+                    for key in t:
+                        ts.setdefault(key, []).append(t[key])
+                    pbar.set_description(
+                        f"{transformation} Progress: " + 
+                        ", ".join(f"{k}:{np.mean(v)/TSS:.2f}" for k, v in ts.items())
+                    )
+                pbar.update(1)
+                results.append(metrics)
+    return results, partitions, ts
 
-for i,transformation in enumerate(tqdm(TRANSFORMATIONS)):
-    metrics = pd.DataFrame(results[i][0], columns=columns) 
-    if inst:
-        dest=f'../results/reports/Single_run_details/INST_metrics_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz'
-        
-    # Save metrics
-    else:
-        dest=f'../results/reports/Single_run_details/metrics_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz',
-    metrics.to_csv(
-        dest, 
-        index=False,compression='gzip'
-    )
+def save_results(transformation, mu, NIT, results, partitions, ts):
+    """保存结果到文件"""
+    columns = [
+        'ari_base', 'ari_alei', 'ari', 'ari_lei', 'ari_i', 'ari_ilei', 
+        'ari_e', 'ari_ne', 'ari_nelei', 'ari_init_base', 'ari_init_alei', 
+        'ari_init', 'ari_init_lei', 'ari_init_i', 'ari_init_ilei', 
+        'ari_init_e', 'ari_init_ne', 'ari_init_nelei', 'ari_fin_base', 
+        'ari_fin_alei', 'ari_fin', 'ari_fin_lei', 'ari_fin_i', 
+        'ari_fin_ilei', 'ari_fin_e', 'ari_fin_ne', 'ari_fin_nelei',
+        'modularity_base', 'modularity_alei', 'modularity', 
+        'modularity_lei', 'modularity_i', 'modularity_ilei', 
+        'modularity_e', 'modularity_ne', 'modularity_nelei'
+    ]
     
-    partitions = {str(j):{'y_pred_base':y_pred_base, 
-                     'y_pred_alei':y_pred_alei, 
-                     'y_pred':y_pred, 
-                     'y_pred_lei':y_pred_lei, 
-                     'y_pred_i':y_pred_i, 
-                     'y_pred_ilei':y_pred_ilei, 
-                     'y_pred_e': y_pred_e,
-                     'y_pred_ne':y_pred_ne,
-                     'y_pred_nelei':y_pred_nelei
-                         }
+    metrics_df = pd.concat([pd.DataFrame(x, columns=columns) for x in results], axis=1)
 
-                  for j, (y_pred_base, y_pred_alei, y_pred, y_pred_lei, y_pred_i, y_pred_ilei, y_pred_e, y_pred_ne, y_pred_nelei) in enumerate(results[i][1])
-                         }
-    
-    partitions["y_true_final"]={key:int(value) for key,value in results[i][2].items()}
-    partitions["y_true_init"]= {key:int(value) for key,value in results[i][3].items()}
-
-
-    # Save metrics
-    if inst:
-        dest=f'../results/reports/Single_run_details/INST_partitions_{transformation}_mu{int(mu*100)}_it{NIT}.json'
-        
-    # Save metrics
+    if report:
+        prefix = f"INST_" if instant else ""
+        metrics_df.to_csv(
+            f"../results/reports/{prefix}{transformation}_mu{int(mu*100)}_singlerun.csv.gz", 
+            index=False, compression='gzip'
+        )
+        with gzip.open(
+            f"../results/reports/{prefix}{transformation}_mu{int(mu*100)}_partitions.json.gz", 
+            "wt"
+        ) as f:
+            json.dump(partitions, f, default=lambda x: int(x))
     else:
-        dest=f'../results/reports/Single_run_details/partitions_{transformation}_mu{int(mu*100)}_it{NIT}.json'
-    print(partitions)
-    with open(dest, "w") as json_file:
-        json.dump(partitions, json_file,default=lambda x: int(x))
-        
+        os.makedirs("../results/reports/time/", exist_ok=True)
+        prefix = f"INST_" if instant else ""
+        metrics_df.to_csv(
+            f"../results/reports/{prefix}{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz", 
+            index=False, compression='gzip'
+        )
+        pd.DataFrame(ts).to_csv(
+            f"../results/reports/time/{prefix}time_{transformation}_mu{int(mu*100)}_it{NIT}.csv.gz",
+            index=False, compression='gzip'
+        )
+
+def main():
+    """主执行函数"""
+    global instant, report
+    
+    # 参数配置
+    if report:
+        NIT, TSS, DELTA = 5, 10, .01
+        GIT = NIT
+    elif instant:
+        NIT, TSS, DELTA = 5, 20, 1
+        GIT = 2
+    else:
+        NIT, TSS, DELTA = 5, 10, .01
+        GIT = 2
+
+    print(f"Configuration: instant={instant}, report={report}")
+    print(f"Parameters: NIT={NIT}, TSS={TSS}, DELTA={DELTA}")
+
+    n_split = 3
+    mu = 0.2
+
+    # 确保输出目录存在
+    os.makedirs("../results/reports/", exist_ok=True)
+
+    # 处理每种变换类型
+    for transformation in TRANSFORMATIONS:
+        print(f"\nStarting processing for {transformation}...")
+        results, partitions, ts = process_results(transformation, NIT, GIT, mu, TSS)
+        save_results(transformation, mu, NIT, results, partitions, ts)
+        print(f"Completed processing for {transformation}")
+
+if __name__ == '__main__':
+    freeze_support()  # Windows多进程必需
+    main()
